@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101827">
+  <meta name="color-scheme" content="dark light">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Finanze Private">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="description" content="Archivio personale di entrate, spese e budget. I dati restano cifrati sul dispositivo.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; manifest-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <link id="appIcon" rel="icon" type="image/png">
+  <link id="appleIcon" rel="apple-touch-icon">
+  <link id="appManifest" rel="manifest">
+  <title>Finanze Private</title>
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color-scheme: dark;
+      --bg: #0b1220; --panel: #121c2e; --panel-2: #19263b; --text: #f2f6fc;
+      --muted: #a9b7c9; --line: #2b3a50; --accent: #55d7ac; --accent-text: #082017;
+      --red: #ff898d; --blue: #8dbaff; --shadow: 0 18px 45px #0004;
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f3f6f9; --panel: #ffffff; --panel-2: #edf3f7; --text: #172334;
+      --muted: #526579; --line: #d9e3ea; --accent: #087f59; --accent-text: #ffffff;
+      --red: #bb3340; --blue: #275eaa; --shadow: 0 12px 30px #18304a16;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    :focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+    .wrap { width: min(1100px, calc(100% - 32px)); margin: 0 auto; }
+    header { border-bottom: 1px solid var(--line); background: var(--panel); }
+    .header-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 17px 0; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-mark { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center;
+      background: var(--accent); color: var(--accent-text); font-size: 23px; font-weight: 800; }
+    .brand strong { display: block; font-size: 19px; line-height: 1.1; }
+    .brand small { color: var(--muted); font-size: 12px; }
+    main { padding: 30px 0 60px; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: clamp(25px, 4vw, 35px); letter-spacing: -.03em; }
+    h2 { font-size: 19px; margin-bottom: 16px; }
+    p { line-height: 1.5; }
+    .muted { color: var(--muted); }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 20px;
+      padding: 24px; box-shadow: var(--shadow); }
+    .gate { max-width: 540px; margin: 45px auto; }
+    .gate p { color: var(--muted); }
+    .stack { display: grid; gap: 14px; }
+    .field { display: grid; gap: 7px; }
+    label { font-weight: 650; font-size: 13px; }
+    input, select { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 11px;
+      padding: 10px 12px; color: var(--text); background: var(--panel-2); }
+    input::placeholder { color: var(--muted); opacity: .8; }
+    .btn { min-height: 43px; border-radius: 11px; border: 1px solid var(--line); padding: 9px 15px;
+      background: var(--panel-2); color: var(--text); font-weight: 700; }
+    .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+    .btn.danger { color: var(--red); }
+    .btn:hover { filter: brightness(1.08); }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .row > .grow { flex: 1 1 auto; }
+    .message { min-height: 22px; margin: 8px 0 0; color: var(--red); font-size: 13px; }
+    .privacy-note { border-left: 3px solid var(--accent); padding-left: 12px; font-size: 13px; }
+    .toolbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+      margin-bottom: 22px; flex-wrap: wrap; }
+    .toolbar p { margin-bottom: 0; }
+    .toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .cards { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 13px; margin-bottom: 17px; }
+    .stat { padding: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 17px; }
+    .stat span { display: block; color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+    .stat strong { font-size: clamp(19px, 2.3vw, 28px); letter-spacing: -.035em; overflow-wrap: anywhere; }
+    .stat.in strong { color: var(--accent); }
+    .stat.out strong { color: var(--red); }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 17px; }
+    .wide { grid-column: 1 / -1; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-grid .full { grid-column: 1 / -1; }
+    .budget-line { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; margin: 13px 0 8px; }
+    .bar { height: 12px; border-radius: 99px; background: var(--panel-2); overflow: hidden; }
+    .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+    .bar > div.over { background: var(--red); }
+    .entry-list { list-style: none; padding: 0; margin: 0; }
+    .entry { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line); }
+    .entry:first-child { border-top: 0; }
+    .entry-main { flex: 1; min-width: 0; }
+    .entry-main strong, .entry-main small { display: block; overflow-wrap: anywhere; }
+    .entry-main small { color: var(--muted); margin-top: 3px; }
+    .entry-amount { font-weight: 750; white-space: nowrap; }
+    .entry-amount.out { color: var(--red); }
+    .entry-amount.in { color: var(--accent); }
+    .icon-btn { border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2);
+      color: var(--muted); padding: 7px 10px; min-width: 35px; }
+    .empty { padding: 20px 0; color: var(--muted); }
+    .small { font-size: 12px; color: var(--muted); }
+    dialog { border: 1px solid var(--line); border-radius: 18px; padding: 22px; max-width: min(420px, calc(100% - 32px));
+      width: 100%; background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+    dialog::backdrop { background: #0009; }
+    #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--panel-2);
+      color: var(--text); border: 1px solid var(--line); border-radius: 11px; padding: 11px 16px;
+      box-shadow: var(--shadow); max-width: calc(100% - 28px); }
+    [hidden] { display: none !important; }
+    @media (max-width: 760px) {
+      main { padding-top: 20px; } .cards { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; }
+      .panel { padding: 18px; } .toolbar-actions .btn { flex: 1; }
+    }
+    @media (max-width: 420px) {
+      .form-grid { grid-template-columns: 1fr; } .form-grid .full { grid-column: auto; }
+      .cards { gap: 8px; } .stat { padding: 15px; } .entry { gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap header-row">
+      <div class="brand"><div class="brand-mark" aria-hidden="true">€</div><div>
+        <strong>Finanze Private</strong><small>Il tuo archivio personale</small>
+      </div></div>
+      <div class="row">
+        <label for="theme">Tema</label>
+        <select id="theme" aria-label="Tema dell'app">
+          <option value="system">Sistema</option><option value="dark">Scuro</option><option value="light">Chiaro</option>
+        </select>
+      </div>
+    </div>
+  </header>
+  <main class="wrap">
+    <section id="gate" class="panel gate">
+      <h1 id="gateTitle">Crea il tuo archivio</h1>
+      <p>I dati vengono cifrati sul dispositivo. Ricorda la password: senza di essa non è possibile recuperare l'archivio.</p>
+      <p id="compatibility" class="message" role="alert" hidden></p>
+      <form id="createForm" class="stack" hidden>
+        <div class="field"><label for="newPassword">Password principale</label>
+          <input id="newPassword" type="password" minlength="12" autocomplete="new-password" required
+            placeholder="Almeno 12 caratteri"></div>
+        <div class="field"><label for="confirmPassword">Ripeti la password</label>
+          <input id="confirmPassword" type="password" minlength="12" autocomplete="new-password" required></div>
+        <button class="btn primary" type="submit">Crea archivio</button>
+      </form>
+      <form id="unlockForm" class="stack" hidden>
+        <div class="field"><label for="unlockPassword">Password principale</label>
+          <input id="unlockPassword" type="password" autocomplete="current-password" required></div>
+        <button class="btn primary" type="submit">Apri archivio</button>
+      </form>
+      <div class="row" style="margin-top:15px">
+        <button id="importGate" class="btn" type="button">Importa un archivio cifrato</button>
+      </div>
+      <p id="gateError" class="message" role="alert"></p>
+      <p class="privacy-note">La copia nel browser è cifrata, ma può essere cancellata dal browser o dal sistema. Esporta regolarmente il file JSON cifrato.</p>
+    </section>
+
+    <section id="app" hidden>
+      <div class="toolbar">
+        <div><h1>Panoramica</h1><p class="muted" id="monthLabel"></p></div>
+        <div class="toolbar-actions">
+          <button id="exportButton" class="btn primary" type="button">Esporta dati cifrati</button>
+          <button id="importButton" class="btn" type="button">Importa dati</button>
+          <button id="lockButton" class="btn" type="button">Blocca</button>
+        </div>
+      </div>
+      <div class="cards">
+        <div class="stat"><span>Saldo complessivo</span><strong id="balance">€ 0,00</strong></div>
+        <div class="stat in"><span>Entrate del mese</span><strong id="income">€ 0,00</strong></div>
+        <div class="stat out"><span>Uscite del mese</span><strong id="expenses">€ 0,00</strong></div>
+        <div class="stat"><span>Risparmio del mese</span><strong id="savings">€ 0,00</strong></div>
+      </div>
+      <div class="grid">
+        <section class="panel">
+          <h2>Budget mensile</h2>
+          <form id="budgetForm" class="row">
+            <div class="field grow"><label for="budgetAmount">Limite di spesa (€)</label>
+              <input id="budgetAmount" type="number" min="0" max="999999999" step="0.01" inputmode="decimal" required></div>
+            <button class="btn" type="submit" style="align-self:end">Salva</button>
+          </form>
+          <div class="budget-line"><span id="budgetText">Nessun budget impostato</span><strong id="budgetRemaining"></strong></div>
+          <div class="bar" role="progressbar" aria-label="Budget utilizzato" aria-valuemin="0" aria-valuemax="100"
+            aria-valuenow="0" id="budgetProgress"><div id="budgetFill"></div></div>
+        </section>
+        <section class="panel">
+          <h2>Nuovo movimento</h2>
+          <form id="entryForm" class="form-grid">
+            <div class="field"><label for="entryKind">Tipo</label><select id="entryKind" required>
+              <option value="out">Uscita</option><option value="in">Entrata</option></select></div>
+            <div class="field"><label for="entryAmount">Importo (€)</label>
+              <input id="entryAmount" type="number" min="0.01" max="999999999" step="0.01" inputmode="decimal" required></div>
+            <div class="field"><label for="entryDate">Data</label><input id="entryDate" type="date" required></div>
+            <div class="field"><label for="entryCategory">Categoria</label><select id="entryCategory" required></select></div>
+            <div class="field full"><label for="entryNote">Nota facoltativa</label>
+              <input id="entryNote" type="text" maxlength="160" placeholder="Es. spesa settimanale"></div>
+            <button class="btn primary full" type="submit">Aggiungi movimento</button>
+          </form>
+        </section>
+        <section class="panel wide">
+          <div class="row" style="justify-content:space-between">
+            <h2 style="margin-bottom:0">Movimenti</h2><span class="small" id="entryCount"></span>
+          </div>
+          <ul id="entryList" class="entry-list"></ul>
+          <p id="emptyList" class="empty">Non hai ancora inserito movimenti.</p>
+        </section>
+      </div>
+      <p class="small" style="margin-top:20px">I movimenti non vengono sincronizzati automaticamente. Dopo ogni modifica, esporta il file cifrato e importalo sull'altro dispositivo.</p>
+    </section>
+  </main>
+
+  <input id="filePicker" type="file" accept=".json,application/json" hidden>
+  <dialog id="passwordDialog">
+    <form id="passwordForm" class="stack">
+      <h2 id="passwordTitle">Password principale</h2>
+      <p id="passwordHint" class="muted"></p>
+      <div class="field"><label for="dialogPassword">Password</label>
+        <input id="dialogPassword" type="password" autocomplete="current-password" required></div>
+      <div class="row" style="justify-content:flex-end">
+        <button id="passwordCancel" class="btn" type="button">Annulla</button>
+        <button class="btn primary" type="submit">Continua</button>
+      </div>
+    </form>
+  </dialog>
+  <div id="toast" role="status" hidden></div>
+
+  <script>
+  "use strict";
+
+  // DATI E CAMPI: personalizzabili nel prossimo passaggio.
+  // Ogni movimento: { id, date, kind: "in"|"out", amountCents, category, note }.
+  // Gli importi sono centesimi interi per evitare errori nei totali.
+  const DEFAULT_CATEGORIES = ["Casa", "Spesa", "Trasporti", "Salute", "Svago", "Lavoro", "Altro"];
+  const EMPTY_DATA = () => ({ version: 1, entries: [], monthlyBudgetCents: 0, updatedAt: new Date().toISOString() });
+
+  // FORMATO DEL FILE CIFRATO: modificare solo prevedendo una migrazione.
+  const STORAGE_KEY = "finanze-private-v1";
+  const THEME_KEY = "finanze-private-theme";
+  const FORMAT = "FinanzePrivate";
+  const ITERATIONS = 600000;
+  const AAD = new TextEncoder().encode("FinanzePrivate:v1");
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const euro = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
+  let data = null;
+  let sessionKey = null;
+  let sessionSalt = null;
+  let pendingPassword = null;
+  let lastActivity = Date.now();
+  const $ = id => document.getElementById(id);
+
+  function toBase64(bytes) {
+    let text = "";
+    for (let i = 0; i < bytes.length; i += 8192)
+      text += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+    return btoa(text);
+  }
+  function fromBase64(text) {
+    const raw = atob(text);
+    return Uint8Array.from(raw, character => character.charCodeAt(0));
+  }
+  function randomBytes(length) {
+    const bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
+    return bytes;
+  }
+  function localDate() {
+    const now = new Date();
+    return now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") +
+      "-" + String(now.getDate()).padStart(2, "0");
+  }
+  function cents(input, allowZero) {
+    const value = Number(input);
+    const amount = Math.round(value * 100);
+    if (!Number.isFinite(value) || !Number.isSafeInteger(amount) || amount < (allowZero ? 0 : 1) ||
+        Math.abs(value * 100 - amount) > 0.00001) throw new Error("Inserisci un importo valido con al massimo due decimali.");
+    return amount;
+  }
+  function validDate(text) {
+    if (typeof text !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+    const date = new Date(text + "T12:00:00");
+    return Number.isFinite(date.getTime()) &&
+      date.getFullYear() === Number(text.slice(0, 4)) &&
+      date.getMonth() + 1 === Number(text.slice(5, 7)) &&
+      date.getDate() === Number(text.slice(8, 10));
+  }
+  function assertData(value) {
+    if (!value || value.version !== 1 || !Array.isArray(value.entries) || value.entries.length > 10000 ||
+        !Number.isSafeInteger(value.monthlyBudgetCents) || value.monthlyBudgetCents < 0 ||
+        value.monthlyBudgetCents > 100000000000 ||
+        typeof value.updatedAt !== "string") throw new Error("Archivio non compatibile.");
+    const ids = new Set();
+    for (const entry of value.entries) {
+      if (!entry || typeof entry.id !== "string" || entry.id.length > 100 ||
+          !validDate(entry.date) || !["in", "out"].includes(entry.kind) ||
+          !Number.isSafeInteger(entry.amountCents) || entry.amountCents <= 0 ||
+          entry.amountCents > 100000000000 ||
+          typeof entry.category !== "string" || entry.category.length > 40 ||
+          typeof entry.note !== "string" || entry.note.length > 160 || ids.has(entry.id))
+        throw new Error("L'archivio contiene movimenti non validi.");
+      ids.add(entry.id);
+    }
+    return value;
+  }
+  function assertEnvelope(value) {
+    if (!value || value.format !== FORMAT || value.version !== 1 || !value.kdf || !value.cipher ||
+        value.kdf.name !== "PBKDF2-SHA-256" || value.kdf.iterations !== ITERATIONS ||
+        value.cipher.name !== "AES-256-GCM" || typeof value.kdf.salt !== "string" ||
+        typeof value.cipher.iv !== "string" || typeof value.cipher.data !== "string" ||
+        value.cipher.data.length > 7000000) throw new Error("File cifrato non valido o non compatibile.");
+    const salt = fromBase64(value.kdf.salt);
+    const iv = fromBase64(value.cipher.iv);
+    if (salt.length !== 16 || iv.length !== 12) throw new Error("File cifrato non valido.");
+    return { salt, iv };
+  }
+  async function deriveKey(password, salt) {
+    const base = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveKey"]);
+    return crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations: ITERATIONS, hash: "SHA-256" },
+      base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+    );
+  }
+  async function seal(value, key, salt) {
+    const iv = randomBytes(12);
+    const encrypted = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv, additionalData: AAD }, key, encoder.encode(JSON.stringify(value))
+    );
+    return {
+      format: FORMAT, version: 1,
+      kdf: { name: "PBKDF2-SHA-256", iterations: ITERATIONS, salt: toBase64(salt) },
+      cipher: { name: "AES-256-GCM", iv: toBase64(iv), data: toBase64(new Uint8Array(encrypted)) }
+    };
+  }
+  async function openEnvelope(envelope, password) {
+    const { salt, iv } = assertEnvelope(envelope);
+    const key = await deriveKey(password, salt);
+    const clear = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv, additionalData: AAD }, key, fromBase64(envelope.cipher.data)
+    );
+    return { value: assertData(JSON.parse(decoder.decode(clear))), key, salt };
+  }
+  function storedEnvelope() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }
+  function showGate() {
+    data = null; sessionKey = null; sessionSalt = null;
+    $("app").hidden = true; $("gate").hidden = false;
+    const exists = !!localStorage.getItem(STORAGE_KEY);
+    $("gateTitle").textContent = exists ? "Apri il tuo archivio" : "Crea il tuo archivio";
+    $("createForm").hidden = exists; $("unlockForm").hidden = !exists;
+    $("newPassword").value = ""; $("confirmPassword").value = ""; $("unlockPassword").value = "";
+    $("gateError").textContent = "";
+  }
+  function showApp() {
+    $("gate").hidden = true; $("app").hidden = false;
+    $("newPassword").value = ""; $("confirmPassword").value = ""; $("unlockPassword").value = "";
+    $("entryDate").value = localDate();
+    lastActivity = Date.now();
+    render();
+  }
+  async function commit(change) {
+    const next = JSON.parse(JSON.stringify(data));
+    change(next);
+    next.updatedAt = new Date().toISOString();
+    assertData(next);
+    const envelope = await seal(next, sessionKey, sessionSalt);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
+    data = next;
+    render();
+    toast("Salvato sul dispositivo. Esporta il file per aggiornare l'altro.");
+  }
+  function toast(message) {
+    $("toast").textContent = message;
+    $("toast").hidden = false;
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => { $("toast").hidden = true; }, 4600);
+  }
+  function errorMessage(error) {
+    return error && error.name === "QuotaExceededError"
+      ? "Spazio del browser esaurito. Esporta l'archivio e libera spazio."
+      : (error && error.message ? error.message : "Operazione non riuscita.");
+  }
+
+  // DASHBOARD: qui si possono aggiungere in seguito categorie, conti e obiettivi personali.
+  function render() {
+    const month = localDate().slice(0, 7);
+    const monthly = data.entries.filter(entry => entry.date.slice(0, 7) === month);
+    const income = monthly.filter(entry => entry.kind === "in").reduce((sum, entry) => sum + entry.amountCents, 0);
+    const expenses = monthly.filter(entry => entry.kind === "out").reduce((sum, entry) => sum + entry.amountCents, 0);
+    const balance = data.entries.reduce((sum, entry) =>
+      sum + (entry.kind === "in" ? entry.amountCents : -entry.amountCents), 0);
+    const budget = data.monthlyBudgetCents;
+    $("monthLabel").textContent = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" }).format(new Date());
+    $("balance").textContent = euro.format(balance / 100);
+    $("income").textContent = euro.format(income / 100);
+    $("expenses").textContent = euro.format(expenses / 100);
+    $("savings").textContent = euro.format((income - expenses) / 100);
+    $("budgetAmount").value = (budget / 100).toFixed(2);
+    $("budgetText").textContent = budget ? euro.format(expenses / 100) + " di " + euro.format(budget / 100) + " spesi" :
+      "Nessun budget impostato";
+    $("budgetRemaining").textContent = budget ? euro.format((budget - expenses) / 100) + " rimanenti" : "";
+    const used = budget ? Math.min(100, Math.round(expenses / budget * 100)) : 0;
+    $("budgetFill").style.width = used + "%";
+    $("budgetFill").classList.toggle("over", budget > 0 && expenses > budget);
+    $("budgetProgress").setAttribute("aria-valuenow", String(used));
+    $("entryCount").textContent = data.entries.length + " movimenti";
+    const list = $("entryList");
+    list.replaceChildren();
+    const sorted = [...data.entries].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    for (const entry of sorted) {
+      const item = document.createElement("li"); item.className = "entry";
+      const main = document.createElement("div"); main.className = "entry-main";
+      const title = document.createElement("strong"); title.textContent = entry.category;
+      const sub = document.createElement("small");
+      const date = new Date(entry.date + "T12:00:00");
+      sub.textContent = new Intl.DateTimeFormat("it-IT").format(date) + (entry.note ? " · " + entry.note : "");
+      main.append(title, sub);
+      const amount = document.createElement("span"); amount.className = "entry-amount " + entry.kind;
+      amount.textContent = (entry.kind === "in" ? "+ " : "− ") + euro.format(entry.amountCents / 100);
+      const remove = document.createElement("button"); remove.type = "button"; remove.className = "icon-btn";
+      remove.textContent = "×"; remove.title = "Elimina movimento"; remove.setAttribute("aria-label", "Elimina movimento");
+      remove.dataset.entryId = entry.id;
+      item.append(main, amount, remove); list.append(item);
+    }
+    $("emptyList").hidden = sorted.length > 0;
+  }
+
+  function requestPassword(title, hint) {
+    return new Promise(resolve => {
+      pendingPassword = resolve;
+      $("passwordTitle").textContent = title;
+      $("passwordHint").textContent = hint;
+      $("dialogPassword").value = "";
+      $("passwordDialog").showModal();
+      $("dialogPassword").focus();
+    });
+  }
+  function finishPassword(value) {
+    $("passwordDialog").close();
+    if (pendingPassword) pendingPassword(value);
+    pendingPassword = null;
+    $("dialogPassword").value = "";
+  }
+  function triggerImport() {
+    $("filePicker").value = "";
+    $("filePicker").click();
+  }
+  function makeIconAndManifest() {
+    const canvas = document.createElement("canvas"); canvas.width = 192; canvas.height = 192;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#101827"; context.fillRect(0, 0, 192, 192);
+    context.fillStyle = "#55d7ac"; context.beginPath(); context.arc(96, 96, 73, 0, Math.PI * 2); context.fill();
+    context.fillStyle = "#082017"; context.font = "bold 110px system-ui"; context.textAlign = "center";
+    context.textBaseline = "middle"; context.fillText("€", 96, 99);
+    const icon = canvas.toDataURL("image/png");
+    $("appIcon").href = icon; $("appleIcon").href = icon;
+    // Manifest incorporato. Alcuni browser ignorano manifest data:; il menu "Installa pagina come app" resta disponibile.
+    const manifest = {
+      name: "Finanze Private", short_name: "Finanze", id: location.pathname,
+      start_url: location.href, scope: new URL(".", location.href).href,
+      display: "standalone", background_color: "#101827", theme_color: "#101827",
+      icons: [{ src: icon, sizes: "192x192", type: "image/png", purpose: "any" }]
+    };
+    $("appManifest").href = "data:application/manifest+json," + encodeURIComponent(JSON.stringify(manifest));
+    // Un Service Worker non puo essere registrato da codice inline o blob:
+    // richiede uno script JavaScript HTTPS separato, servito dalla stessa origine.
+  }
+  function applyTheme(theme) {
+    const selected = theme === "light" || theme === "dark" ? theme : "system";
+    const actual = selected === "system" ?
+      (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : selected;
+    document.documentElement.dataset.theme = actual;
+    $("theme").value = selected;
+    localStorage.setItem(THEME_KEY, selected);
+  }
+  function newId() {
+    return Array.from(randomBytes(16), byte => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  $("createForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    $("gateError").textContent = "";
+    const password = $("newPassword").value;
+    if (password.length < 12 || password !== $("confirmPassword").value) {
+      $("gateError").textContent = "Usa almeno 12 caratteri e ripeti la stessa password."; return;
+    }
+    try {
+      if (storedEnvelope()) throw new Error("Esiste gia un archivio. Importalo o aprilo.");
+      const salt = randomBytes(16);
+      const key = await deriveKey(password, salt);
+      const next = EMPTY_DATA();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(await seal(next, key, salt)));
+      data = next; sessionKey = key; sessionSalt = salt; showApp();
+      toast("Archivio creato. Esporta una prima copia cifrata.");
+    } catch (error) { $("gateError").textContent = errorMessage(error); }
+  });
+  $("unlockForm").addEventListener("submit", async event => {
+    event.preventDefault(); $("gateError").textContent = "";
+    try {
+      const opened = await openEnvelope(storedEnvelope(), $("unlockPassword").value);
+      data = opened.value; sessionKey = opened.key; sessionSalt = opened.salt; showApp();
+    } catch (error) { $("gateError").textContent = "Password errata o archivio danneggiato."; }
+  });
+  $("entryForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    try {
+      const amountCents = cents($("entryAmount").value, false);
+      const date = $("entryDate").value;
+      if (!validDate(date)) throw new Error("Seleziona una data valida.");
+      const category = $("entryCategory").value;
+      const note = $("entryNote").value.trim();
+      const kind = $("entryKind").value;
+      await commit(next => next.entries.push({ id: newId(), date, kind, amountCents, category, note }));
+      $("entryAmount").value = ""; $("entryNote").value = "";
+    } catch (error) { toast(errorMessage(error)); }
+  });
+  $("budgetForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    try { const amount = cents($("budgetAmount").value, true);
+      await commit(next => { next.monthlyBudgetCents = amount; });
+    } catch (error) { toast(errorMessage(error)); }
+  });
+  $("entryList").addEventListener("click", async event => {
+    const button = event.target.closest("button[data-entry-id]");
+    if (!button || !confirm("Eliminare questo movimento?")) return;
+    try { await commit(next => { next.entries = next.entries.filter(entry => entry.id !== button.dataset.entryId); }); }
+    catch (error) { toast(errorMessage(error)); }
+  });
+  $("exportButton").addEventListener("click", async () => {
+    const password = await requestPassword("Esporta dati cifrati", "Conferma la password principale prima di scaricare il file.");
+    if (password === null) return;
+    try {
+      const envelope = storedEnvelope();
+      await openEnvelope(envelope, password);
+      const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a"); link.href = url;
+      link.download = "finanze_data_" + localDate().replaceAll("-", "") + ".json";
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      toast("File cifrato scaricato. Salvalo nel cloud scelto.");
+    } catch (error) { toast("Password errata o esportazione non riuscita."); }
+  });
+  $("filePicker").addEventListener("change", async event => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (file.size > 5500000) { toast("File troppo grande."); return; }
+    try {
+      const envelope = JSON.parse(await file.text());
+      const password = await requestPassword("Importa dati cifrati", "Inserisci la password usata quando hai esportato questo file.");
+      if (password === null) return;
+      const opened = await openEnvelope(envelope, password);
+      if (localStorage.getItem(STORAGE_KEY) &&
+          !confirm("L'importazione sostituira l'archivio locale. Se ci sono modifiche non esportate, perderai quelle modifiche. Continuare?"))
+        return;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
+      data = opened.value; sessionKey = opened.key; sessionSalt = opened.salt; showApp();
+      toast("Archivio importato. Ora puoi usarlo su questo dispositivo.");
+    } catch (error) {
+      const message = "Importazione non riuscita: file, password o formato non valido.";
+      if ($("gate").hidden) toast(message); else $("gateError").textContent = message;
+    } finally { $("filePicker").value = ""; }
+  });
+  $("importGate").addEventListener("click", triggerImport);
+  $("importButton").addEventListener("click", triggerImport);
+  $("lockButton").addEventListener("click", showGate);
+  $("passwordForm").addEventListener("submit", event => {
+    event.preventDefault(); finishPassword($("dialogPassword").value);
+  });
+  $("passwordCancel").addEventListener("click", () => finishPassword(null));
+  $("passwordDialog").addEventListener("cancel", event => { event.preventDefault(); finishPassword(null); });
+  $("theme").addEventListener("change", event => applyTheme(event.target.value));
+  matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+    if ($("theme").value === "system") applyTheme("system");
+  });
+  for (const category of DEFAULT_CATEGORIES) {
+    const option = document.createElement("option"); option.value = category; option.textContent = category;
+    $("entryCategory").append(option);
+  }
+  try {
+    if (!window.isSecureContext || !crypto.subtle) throw new Error("La cifratura richiede HTTPS o un file locale aperto in un browser compatibile.");
+    localStorage.setItem("finanze-private-check", "1");
+    localStorage.removeItem("finanze-private-check");
+    makeIconAndManifest();
+    applyTheme(localStorage.getItem(THEME_KEY) || "system");
+    showGate();
+  } catch (error) {
+    $("compatibility").textContent = errorMessage(error);
+    $("compatibility").hidden = false;
+    $("createForm").hidden = true; $("unlockForm").hidden = true; $("importGate").disabled = true;
+  }
+  document.addEventListener("pointerdown", () => { lastActivity = Date.now(); });
+  document.addEventListener("keydown", () => { lastActivity = Date.now(); });
+  setInterval(() => {
+    if (data && Date.now() - lastActivity > 10 * 60 * 1000) showGate();
+  }, 30000);
+  </script>
+</body>
+</html>
