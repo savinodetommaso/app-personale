@@ -156,7 +156,7 @@
   <main class="wrap">
     <section id="gate" class="panel gate">
       <h1 id="gateTitle">Crea il tuo archivio</h1>
-      <p>I dati vengono cifrati sul dispositivo. Ricorda la password: senza di essa non è possibile recuperare l'archivio.</p>
+      <p>I dati vengono cifrati sul dispositivo. Conserva la password principale: serve per i backup e per recuperare l'archivio su un altro dispositivo.</p>
       <p id="compatibility" class="message" role="alert" hidden></p>
       <form id="createForm" class="stack" hidden>
         <div class="field"><label for="newPassword">Password principale</label>
@@ -171,6 +171,7 @@
           <input id="unlockPassword" type="password" autocomplete="current-password" required></div>
         <button class="btn primary" type="submit">Apri archivio</button>
       </form>
+      <button id="quickUnlock" class="btn primary" type="button" style="margin-top:14px" hidden>Apri con Face ID</button>
       <div class="row" style="margin-top:15px">
         <button id="importGate" class="btn" type="button">Importa un archivio cifrato</button>
       </div>
@@ -188,6 +189,15 @@
           <button id="lockButton" class="btn" type="button">Blocca</button>
         </div>
       </div>
+      <section id="quickAccessPanel" class="panel" style="margin-bottom:17px" hidden>
+        <h2>Accesso rapido su iPhone</h2>
+        <p class="section-note">L'iPhone userà Face ID, Touch ID o il codice del dispositivo. La password principale resta necessaria per importare ed esportare il file cifrato.</p>
+        <div class="row">
+          <button id="quickEnable" class="btn primary" type="button">Attiva Face ID</button>
+          <button id="quickDisable" class="btn danger" type="button" hidden>Disattiva accesso rapido</button>
+        </div>
+        <p id="quickStatus" class="small" style="margin:12px 0 0"></p>
+      </section>
       <div class="cards">
         <div class="stat"><span>Saldo attuale complessivo</span><strong id="balance">€ 0,00</strong></div>
         <div class="stat in"><span>Entrate del mese</span><strong id="income">€ 0,00</strong></div>
@@ -335,12 +345,15 @@
 
   // FORMATO DEL FILE CIFRATO: modificare solo prevedendo una migrazione.
   const STORAGE_KEY = "finanze-private-v1";
+  const QUICK_ACCESS_KEY = "finanze-private-quick-access-v1";
   const THEME_KEY = "finanze-private-theme";
   const FORMAT = "FinanzePrivate";
   const ITERATIONS = 600000;
   const AAD = new TextEncoder().encode("FinanzePrivate:v1");
+  const QUICK_AAD = new TextEncoder().encode("FinanzePrivate:quick-access:v1:" + location.origin);
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
+  const IS_IPHONE = /iPhone|iPod/.test(navigator.userAgent);
   const euro = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
   let data = null;
   let sessionKey = null;
@@ -350,6 +363,8 @@
   let committing = false;
   let lastStoredEnvelope = null;
   let lastActivity = Date.now();
+  let quickAccessAvailable = false;
+  let quickAccessBusy = false;
   const $ = id => document.getElementById(id);
 
   function toBase64(bytes) {
@@ -361,6 +376,14 @@
   function fromBase64(text) {
     const raw = atob(text);
     return Uint8Array.from(raw, character => character.charCodeAt(0));
+  }
+  function toBase64Url(bytes) {
+    return toBase64(bytes).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  }
+  function bufferBytes(value) {
+    if (value instanceof ArrayBuffer) return new Uint8Array(value);
+    if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    return null;
   }
   function randomBytes(length) {
     const bytes = new Uint8Array(length);
@@ -536,6 +559,70 @@
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   }
+
+  // ACCESSO RAPIDO: la passkey dell'iPhone produce una chiave PRF. Solo una copia
+  // cifrata della password principale rimane in questo browser; il JSON non cambia.
+  function storedQuickAccess() {
+    try {
+      const value = JSON.parse(localStorage.getItem(QUICK_ACCESS_KEY));
+      if (!value || value.version !== 1 || typeof value.credentialId !== "string" ||
+          typeof value.salt !== "string" || typeof value.iv !== "string" ||
+          typeof value.data !== "string" || value.data.length > 20000 ||
+          fromBase64(value.credentialId).length < 16 ||
+          fromBase64(value.credentialId).length > 1024 ||
+          fromBase64(value.salt).length !== 32 || fromBase64(value.iv).length !== 12)
+        return null;
+      return value;
+    } catch (_) { return null; }
+  }
+  function refreshQuickAccessUI() {
+    const onIphone = IS_IPHONE && location.protocol === "https:";
+    const saved = storedQuickAccess();
+    $("quickAccessPanel").hidden = !onIphone;
+    $("quickUnlock").hidden = !quickAccessAvailable || !saved || !localStorage.getItem(STORAGE_KEY);
+    $("quickUnlock").disabled = quickAccessBusy;
+    $("quickEnable").hidden = !!saved;
+    $("quickEnable").disabled = !quickAccessAvailable || quickAccessBusy;
+    $("quickDisable").hidden = !saved;
+    $("quickDisable").disabled = quickAccessBusy;
+    $("quickStatus").textContent = !quickAccessAvailable ?
+      "Face ID non disponibile in questa versione del browser o dell'iPhone. Usa la password principale." :
+      saved ? "Attivo su questo iPhone. La password principale rimane necessaria per i file JSON." :
+      "Attivalo una volta con la password principale. La copia per Face ID rimane cifrata su questo iPhone.";
+  }
+  async function detectQuickAccess() {
+    if (IS_IPHONE && location.protocol === "https:" &&
+        typeof PublicKeyCredential !== "undefined" &&
+        typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function" &&
+        navigator.credentials && navigator.credentials.create && navigator.credentials.get) {
+      try {
+        quickAccessAvailable = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+      } catch (_) { quickAccessAvailable = false; }
+    }
+    refreshQuickAccessUI();
+  }
+  async function quickPrf(credentialId, salt) {
+    const credential = await navigator.credentials.get({ publicKey: {
+      challenge: randomBytes(32), rpId: location.hostname,
+      allowCredentials: [{ type: "public-key", id: credentialId }],
+      userVerification: "required", timeout: 60000,
+      extensions: { prf: { evalByCredential: { [toBase64Url(credentialId)]: { first: salt } } } }
+    } });
+    if (!credential || toBase64(new Uint8Array(credential.rawId)) !== toBase64(credentialId))
+      throw new Error("Passkey non corrispondente.");
+    const authenticatorData = new Uint8Array(credential.response.authenticatorData);
+    if (authenticatorData.length < 33 || !(authenticatorData[32] & 4))
+      throw new Error("Sblocco del dispositivo non verificato.");
+    const first = credential.getClientExtensionResults().prf?.results?.first;
+    const result = bufferBytes(first);
+    if (!result || result.length !== 32) throw new Error("Chiave Face ID non disponibile.");
+    return result;
+  }
+  async function quickKey(prfBytes) {
+    try {
+      return await crypto.subtle.importKey("raw", prfBytes, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+    } finally { prfBytes.fill(0); }
+  }
   function showGate() {
     data = null; sessionKey = null; sessionSalt = null; pendingRecurringId = null; lastStoredEnvelope = null;
     $("app").hidden = true; $("gate").hidden = false;
@@ -544,6 +631,7 @@
     $("createForm").hidden = exists; $("unlockForm").hidden = !exists;
     $("newPassword").value = ""; $("confirmPassword").value = ""; $("unlockPassword").value = "";
     $("gateError").textContent = "";
+    refreshQuickAccessUI();
   }
   function showApp() {
     $("gate").hidden = true; $("app").hidden = false;
@@ -553,6 +641,7 @@
     resetEntryForm(); resetAccountForm(); resetCategoryForm(); resetRecurringForm();
     lastActivity = Date.now();
     render();
+    refreshQuickAccessUI();
   }
   async function commit(change) {
     if (committing) throw new Error("Salvataggio in corso. Riprova tra un momento.");
@@ -835,6 +924,81 @@
       lastStoredEnvelope = raw;
       data = opened.value; sessionKey = opened.key; sessionSalt = opened.salt; showApp();
     } catch (error) { $("gateError").textContent = "Password errata o archivio danneggiato."; }
+  });
+  $("quickEnable").addEventListener("click", async () => {
+    if (!quickAccessAvailable || !data || quickAccessBusy) return;
+    quickAccessBusy = true; refreshQuickAccessUI();
+    let master = null;
+    let passwordVerified = false;
+    try {
+      master = await requestPassword("Attiva Face ID", "Conferma la password principale. Poi autorizza la creazione e l'uso della passkey sull'iPhone.");
+      if (master === null) return;
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw || raw !== lastStoredEnvelope) throw new Error("Archivio modificato in un'altra finestra.");
+      await openEnvelope(JSON.parse(raw), master);
+      passwordVerified = true;
+      const salt = randomBytes(32);
+      const credential = await navigator.credentials.create({ publicKey: {
+        challenge: randomBytes(32),
+        rp: { id: location.hostname, name: "Finanze Private" },
+        user: { id: randomBytes(16), name: "Archivio personale", displayName: "Finanze Private" },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: "platform", residentKey: "required", userVerification: "required" },
+        timeout: 60000, attestation: "none",
+        extensions: { prf: { eval: { first: salt } } }
+      } });
+      if (!credential || !credential.rawId)
+        throw new Error("La passkey non supporta l'accesso cifrato.");
+      const credentialId = new Uint8Array(credential.rawId);
+      const prfBytes = await quickPrf(credentialId, salt);
+      const key = await quickKey(prfBytes);
+      const iv = randomBytes(12);
+      const encrypted = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv, additionalData: QUICK_AAD }, key, encoder.encode(master)
+      );
+      if (localStorage.getItem(STORAGE_KEY) !== raw) throw new Error("Archivio modificato in un'altra finestra.");
+      localStorage.setItem(QUICK_ACCESS_KEY, JSON.stringify({ version: 1,
+        credentialId: toBase64(credentialId), salt: toBase64(salt), iv: toBase64(iv),
+        data: toBase64(new Uint8Array(encrypted)) }));
+      toast("Face ID attivato su questo iPhone.");
+    } catch (error) {
+      toast(!passwordVerified ? "Password principale errata o archivio cambiato." :
+        error.name === "NotAllowedError" ? "Attivazione annullata." :
+        "Face ID non disponibile qui. La password principale continua a funzionare.");
+    } finally { master = null; quickAccessBusy = false; refreshQuickAccessUI(); }
+  });
+  $("quickDisable").addEventListener("click", () => {
+    if (quickAccessBusy) return;
+    localStorage.removeItem(QUICK_ACCESS_KEY);
+    refreshQuickAccessUI();
+    toast("Accesso rapido disattivato su questo iPhone.");
+  });
+  $("quickUnlock").addEventListener("click", async () => {
+    if (!quickAccessAvailable || quickAccessBusy) return;
+    quickAccessBusy = true; refreshQuickAccessUI();
+    $("gateError").textContent = "";
+    let master = null;
+    try {
+      const saved = storedQuickAccess();
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!saved || !raw) throw new Error("Accesso rapido non configurato.");
+      const prfBytes = await quickPrf(fromBase64(saved.credentialId), fromBase64(saved.salt));
+      const key = await quickKey(prfBytes);
+      const clear = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: fromBase64(saved.iv), additionalData: QUICK_AAD },
+        key, fromBase64(saved.data)
+      );
+      master = decoder.decode(clear);
+      new Uint8Array(clear).fill(0);
+      const opened = await openEnvelope(JSON.parse(raw), master);
+      if (localStorage.getItem(STORAGE_KEY) !== raw) throw new Error("Archivio modificato in un'altra finestra.");
+      lastStoredEnvelope = raw;
+      data = opened.value; sessionKey = opened.key; sessionSalt = opened.salt; showApp();
+    } catch (error) {
+      $("gateError").textContent = error.name === "NotAllowedError" ?
+        "Sblocco annullato. Puoi usare la password principale." :
+        "Sblocco con Face ID non riuscito. Apri con la password principale; se necessario, disattiva e riattiva Face ID.";
+    } finally { master = null; quickAccessBusy = false; refreshQuickAccessUI(); }
   });
   function resetAccountForm() {
     $("accountForm").reset(); $("accountEditing").value = ""; $("accountOpening").value = "0";
@@ -1168,6 +1332,7 @@
     makeIconAndManifest();
     applyTheme(localStorage.getItem(THEME_KEY) || "system");
     showGate();
+    detectQuickAccess();
   } catch (error) {
     $("compatibility").textContent = errorMessage(error);
     $("compatibility").hidden = false;
