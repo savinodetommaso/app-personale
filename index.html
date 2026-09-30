@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Finanze Private">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="description" content="Archivio personale di entrate, spese e budget. I dati restano cifrati sul dispositivo.">
+  <meta name="description" content="Archivio personale di conti, carte, contanti, movimenti e budget. I dati restano cifrati sul dispositivo.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; manifest-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <link id="appIcon" rel="icon" type="image/png">
   <link id="appleIcon" rel="apple-touch-icon">
@@ -81,12 +81,32 @@
     .wide { grid-column: 1 / -1; }
     .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .form-grid .full { grid-column: 1 / -1; }
+    .account-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-bottom: 20px; }
+    .account-card, .budget-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 13px; padding: 15px; }
+    .account-card strong, .account-card small, .account-card b { display: block; overflow-wrap: anywhere; }
+    .account-card small { color: var(--muted); margin: 4px 0 9px; }
+    .account-card b { font-size: 22px; }
+    .section-note { color: var(--muted); font-size: 13px; margin: -5px 0 17px; }
+    .section-title { margin: 22px 0 12px; font-size: 15px; }
+    .item-list { list-style: none; padding: 0; margin: 0; }
+    .item-row { border-top: 1px solid var(--line); padding: 12px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .item-row:first-child { border-top: 0; }
+    .item-row .item-main { flex: 1 1 180px; min-width: 0; }
+    .item-row strong, .item-row small { display: block; overflow-wrap: anywhere; }
+    .item-row small { color: var(--muted); margin-top: 3px; }
+    .item-row .item-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .item-row .item-actions .btn { min-height: 36px; padding: 6px 10px; font-size: 12px; }
+    .budget-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin: 16px 0; }
+    .budget-card .budget-line { margin-top: 8px; }
+    .budget-card .btn { margin-top: 12px; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 99px; background: var(--panel-2); color: var(--muted); font-size: 12px; }
+    .due { color: var(--red); }
     .budget-line { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; margin: 13px 0 8px; }
     .bar { height: 12px; border-radius: 99px; background: var(--panel-2); overflow: hidden; }
     .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
     .bar > div.over { background: var(--red); }
     .entry-list { list-style: none; padding: 0; margin: 0; }
-    .entry { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line); }
+    .entry { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 13px 0; border-top: 1px solid var(--line); }
     .entry:first-child { border-top: 0; }
     .entry-main { flex: 1; min-width: 0; }
     .entry-main strong, .entry-main small { display: block; overflow-wrap: anywhere; }
@@ -94,6 +114,7 @@
     .entry-amount { font-weight: 750; white-space: nowrap; }
     .entry-amount.out { color: var(--red); }
     .entry-amount.in { color: var(--accent); }
+    .entry-amount.transfer { color: var(--blue); }
     .icon-btn { border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2);
       color: var(--muted); padding: 7px 10px; min-width: 35px; }
     .empty { padding: 20px 0; color: var(--muted); }
@@ -109,10 +130,12 @@
       main { padding-top: 20px; } .cards { grid-template-columns: repeat(2, minmax(0,1fr)); }
       .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; }
       .panel { padding: 18px; } .toolbar-actions .btn { flex: 1; }
+      .account-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
     }
     @media (max-width: 420px) {
       .form-grid { grid-template-columns: 1fr; } .form-grid .full { grid-column: auto; }
       .cards { gap: 8px; } .stat { padding: 15px; } .entry { gap: 8px; }
+      .account-grid, .budget-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -157,7 +180,8 @@
 
     <section id="app" hidden>
       <div class="toolbar">
-        <div><h1>Panoramica</h1><p class="muted" id="monthLabel"></p></div>
+        <div><h1>Panoramica</h1><div class="field"><label for="viewMonth">Mese da visualizzare</label>
+          <input id="viewMonth" type="month" aria-label="Mese da visualizzare"></div></div>
         <div class="toolbar-actions">
           <button id="exportButton" class="btn primary" type="button">Esporta dati cifrati</button>
           <button id="importButton" class="btn" type="button">Importa dati</button>
@@ -165,46 +189,106 @@
         </div>
       </div>
       <div class="cards">
-        <div class="stat"><span>Saldo complessivo</span><strong id="balance">€ 0,00</strong></div>
+        <div class="stat"><span>Saldo attuale complessivo</span><strong id="balance">€ 0,00</strong></div>
         <div class="stat in"><span>Entrate del mese</span><strong id="income">€ 0,00</strong></div>
         <div class="stat out"><span>Uscite del mese</span><strong id="expenses">€ 0,00</strong></div>
         <div class="stat"><span>Risparmio del mese</span><strong id="savings">€ 0,00</strong></div>
       </div>
       <div class="grid">
-        <section class="panel">
-          <h2>Budget mensile</h2>
-          <form id="budgetForm" class="row">
-            <div class="field grow"><label for="budgetAmount">Limite di spesa (€)</label>
-              <input id="budgetAmount" type="number" min="0" max="999999999" step="0.01" inputmode="decimal" required></div>
-            <button class="btn" type="submit" style="align-self:end">Salva</button>
+        <section class="panel wide">
+          <h2>Conti, carte e contanti</h2>
+          <p class="section-note">Il saldo di partenza è quello che avevi prima dei movimenti che registrerai. Un prelievo è un trasferimento, non una spesa. Se una carta usa direttamente i soldi del conto, registra le spese sul conto per non contarli due volte. Per una carta di credito, puoi registrare gli acquisti sulla carta e il rimborso dal conto come trasferimento.</p>
+          <div id="accountList" class="account-grid"></div>
+          <h3 class="section-title" id="accountFormTitle">Aggiungi un conto o una carta</h3>
+          <form id="accountForm" class="form-grid">
+            <input id="accountEditing" type="hidden">
+            <div class="field"><label for="accountName">Nome</label><input id="accountName" type="text" maxlength="40" placeholder="Es. Conto principale" required></div>
+            <div class="field"><label for="accountType">Tipo</label><select id="accountType" required>
+              <option value="bank">Conto corrente</option><option value="card">Carta</option>
+              <option value="cash">Contanti</option><option value="other">Altro</option></select></div>
+            <div class="field"><label for="accountOpening">Saldo di partenza (€)</label>
+              <input id="accountOpening" type="number" step="0.01" inputmode="decimal" value="0" required></div>
+            <div class="row" style="align-self:end"><button id="accountSave" class="btn primary" type="submit">Aggiungi</button>
+              <button id="accountCancel" class="btn" type="button" hidden>Annulla</button></div>
           </form>
-          <div class="budget-line"><span id="budgetText">Nessun budget impostato</span><strong id="budgetRemaining"></strong></div>
-          <div class="bar" role="progressbar" aria-label="Budget utilizzato" aria-valuemin="0" aria-valuemax="100"
-            aria-valuenow="0" id="budgetProgress"><div id="budgetFill"></div></div>
         </section>
         <section class="panel">
           <h2>Nuovo movimento</h2>
           <form id="entryForm" class="form-grid">
+            <input id="entryEditing" type="hidden">
             <div class="field"><label for="entryKind">Tipo</label><select id="entryKind" required>
-              <option value="out">Uscita</option><option value="in">Entrata</option></select></div>
+              <option value="out">Uscita</option><option value="in">Entrata</option>
+              <option value="transfer">Trasferimento o prelievo</option></select></div>
             <div class="field"><label for="entryAmount">Importo (€)</label>
               <input id="entryAmount" type="number" min="0.01" max="999999999" step="0.01" inputmode="decimal" required></div>
             <div class="field"><label for="entryDate">Data</label><input id="entryDate" type="date" required></div>
-            <div class="field"><label for="entryCategory">Categoria</label><select id="entryCategory" required></select></div>
+            <div class="field" id="entryAccountField"><label for="entryAccount">Conto, carta o contanti</label>
+              <select id="entryAccount" required></select></div>
+            <div class="field" id="entryCategoryField"><label for="entryCategory">Categoria</label><select id="entryCategory" required></select></div>
+            <div class="field" id="transferFromField" hidden><label for="transferFrom">Da</label><select id="transferFrom"></select></div>
+            <div class="field" id="transferToField" hidden><label for="transferTo">A</label><select id="transferTo"></select></div>
             <div class="field full"><label for="entryNote">Nota facoltativa</label>
               <input id="entryNote" type="text" maxlength="160" placeholder="Es. spesa settimanale"></div>
-            <button class="btn primary full" type="submit">Aggiungi movimento</button>
+            <div class="row full"><button id="entrySave" class="btn primary" type="submit">Aggiungi movimento</button>
+              <button id="entryCancel" class="btn" type="button" hidden>Annulla</button></div>
+          </form>
+        </section>
+        <section class="panel">
+          <h2>Spese mensili</h2>
+          <p class="section-note">Sono promemoria. Il saldo cambia solo quando prepari e salvi il pagamento come movimento.</p>
+          <ul id="recurringList" class="item-list"></ul>
+          <p id="recurringEmpty" class="small">Nessuna spesa mensile impostata.</p>
+          <h3 class="section-title" id="recurringFormTitle">Aggiungi una spesa mensile</h3>
+          <form id="recurringForm" class="form-grid">
+            <input id="recurringEditing" type="hidden">
+            <div class="field full"><label for="recurringName">Nome</label>
+              <input id="recurringName" type="text" maxlength="60" placeholder="Es. Finanziamento, telefono, parrucchiere" required></div>
+            <div class="field"><label for="recurringAmount">Importo previsto (€)</label>
+              <input id="recurringAmount" type="number" min="0.01" max="999999999" step="0.01" inputmode="decimal" required></div>
+            <div class="field"><label for="recurringDue">Prossima data prevista</label><input id="recurringDue" type="date" required></div>
+            <div class="field"><label for="recurringAccount">Da quale saldo</label><select id="recurringAccount" required></select></div>
+            <div class="field"><label for="recurringCategory">Categoria</label><select id="recurringCategory" required></select></div>
+            <div class="row full"><button id="recurringSave" class="btn primary" type="submit">Aggiungi</button>
+              <button id="recurringCancel" class="btn" type="button" hidden>Annulla</button></div>
           </form>
         </section>
         <section class="panel wide">
+          <h2>Budget consigliati per categoria</h2>
+          <p class="section-note">I limiti si ripetono ogni mese e servono come guida: non bloccano i pagamenti.</p>
+          <div id="budgetList" class="budget-grid"></div>
+          <h3 class="section-title">Limite complessivo facoltativo</h3>
+          <form id="budgetForm" class="row">
+            <div class="field grow"><label for="budgetAmount">Spesa consigliata totale al mese (€; 0 per nessun limite)</label>
+              <input id="budgetAmount" type="number" min="0" max="999999999" step="0.01" inputmode="decimal" required></div>
+            <button class="btn" type="submit" style="align-self:end">Salva</button>
+          </form>
+          <div class="budget-line"><span id="budgetText">Nessun limite impostato</span><strong id="budgetRemaining"></strong></div>
+          <div class="bar" role="progressbar" aria-label="Budget complessivo utilizzato" aria-valuemin="0" aria-valuemax="100"
+            aria-valuenow="0" id="budgetProgress"><div id="budgetFill"></div></div>
+          <h3 class="section-title" id="categoryFormTitle">Aggiungi una categoria</h3>
+          <form id="categoryForm" class="form-grid">
+            <input id="categoryEditing" type="hidden">
+            <div class="field"><label for="categoryName">Nome categoria</label>
+              <input id="categoryName" type="text" maxlength="40" placeholder="Es. Ristoranti" required></div>
+            <div class="field"><label for="categoryKind">Tipo</label><select id="categoryKind">
+              <option value="out">Spesa</option><option value="in">Entrata</option></select></div>
+            <div class="field" id="categoryLimitField"><label for="categoryLimit">Spesa consigliata mensile (€; 0 per nessun limite)</label>
+              <input id="categoryLimit" type="number" min="0" max="999999999" step="0.01" inputmode="decimal" value="0" required></div>
+            <div class="row" style="align-self:end"><button id="categorySave" class="btn primary" type="submit">Aggiungi</button>
+              <button id="categoryCancel" class="btn" type="button" hidden>Annulla</button></div>
+          </form>
+          <h3 class="section-title">Categorie disponibili</h3>
+          <ul id="categoryList" class="item-list"></ul>
+        </section>
+        <section class="panel wide">
           <div class="row" style="justify-content:space-between">
-            <h2 style="margin-bottom:0">Movimenti</h2><span class="small" id="entryCount"></span>
+            <h2 style="margin-bottom:0">Movimenti del mese</h2><span class="small" id="entryCount"></span>
           </div>
           <ul id="entryList" class="entry-list"></ul>
           <p id="emptyList" class="empty">Non hai ancora inserito movimenti.</p>
         </section>
       </div>
-      <p class="small" style="margin-top:20px">I movimenti non vengono sincronizzati automaticamente. Dopo ogni modifica, esporta il file cifrato e importalo sull'altro dispositivo.</p>
+      <p class="small" style="margin-top:20px">La sincronizzazione è manuale. Dopo le modifiche, esporta il file cifrato, carica su iCloud la copia più recente e importala sull'altro dispositivo prima di modificarlo.</p>
     </section>
   </main>
 
@@ -226,11 +310,28 @@
   <script>
   "use strict";
 
-  // DATI E CAMPI: personalizzabili nel prossimo passaggio.
-  // Ogni movimento: { id, date, kind: "in"|"out", amountCents, category, note }.
-  // Gli importi sono centesimi interi per evitare errori nei totali.
-  const DEFAULT_CATEGORIES = ["Casa", "Spesa", "Trasporti", "Salute", "Svago", "Lavoro", "Altro"];
-  const EMPTY_DATA = () => ({ version: 1, entries: [], monthlyBudgetCents: 0, updatedAt: new Date().toISOString() });
+  // DATI: gli importi sono centesimi interi. I trasferimenti non sono spese o entrate.
+  // Un conto ha un saldo di partenza; i movimenti successivi ne modificano il saldo.
+  const MAX_CENTS = 100000000000;
+  const ACCOUNT_TYPES = { bank: "Conto corrente", card: "Carta", cash: "Contanti", other: "Altro" };
+  const DEFAULT_EXPENSES = ["Casa", "Alimentari", "Trasporti", "Salute", "Finanziamenti",
+    "Telefono", "Cura personale", "Abbonamenti", "Svago", "Lavoro", "Altro"];
+  const DEFAULT_INCOME = ["Stipendio", "Rimborsi", "Regali", "Altre entrate"];
+  function defaultAccounts() {
+    return [
+      { id: "account-bank", name: "Conto corrente", type: "bank", openingBalanceCents: 0 },
+      { id: "account-card", name: "Carta", type: "card", openingBalanceCents: 0 },
+      { id: "account-cash", name: "Contanti", type: "cash", openingBalanceCents: 0 }
+    ];
+  }
+  function defaultCategories() {
+    return [
+      ...DEFAULT_EXPENSES.map((name, index) => ({ id: "expense-" + index, name, kind: "out", monthlyLimitCents: 0 })),
+      ...DEFAULT_INCOME.map((name, index) => ({ id: "income-" + index, name, kind: "in", monthlyLimitCents: 0 }))
+    ];
+  }
+  const EMPTY_DATA = () => ({ version: 2, accounts: defaultAccounts(), categories: defaultCategories(),
+    entries: [], recurring: [], monthlyBudgetCents: 0, updatedAt: new Date().toISOString() });
 
   // FORMATO DEL FILE CIFRATO: modificare solo prevedendo una migrazione.
   const STORAGE_KEY = "finanze-private-v1";
@@ -245,6 +346,9 @@
   let sessionKey = null;
   let sessionSalt = null;
   let pendingPassword = null;
+  let pendingRecurringId = null;
+  let committing = false;
+  let lastStoredEnvelope = null;
   let lastActivity = Date.now();
   const $ = id => document.getElementById(id);
 
@@ -272,7 +376,16 @@
     const value = Number(input);
     const amount = Math.round(value * 100);
     if (!Number.isFinite(value) || !Number.isSafeInteger(amount) || amount < (allowZero ? 0 : 1) ||
-        Math.abs(value * 100 - amount) > 0.00001) throw new Error("Inserisci un importo valido con al massimo due decimali.");
+        amount > MAX_CENTS || Math.abs(value * 100 - amount) > 0.00001)
+      throw new Error("Inserisci un importo valido con al massimo due decimali.");
+    return amount;
+  }
+  function signedCents(input) {
+    const value = Number(input);
+    const amount = Math.round(value * 100);
+    if (!Number.isFinite(value) || !Number.isSafeInteger(amount) || Math.abs(amount) > MAX_CENTS ||
+        Math.abs(value * 100 - amount) > 0.00001)
+      throw new Error("Inserisci un saldo valido con al massimo due decimali.");
     return amount;
   }
   function validDate(text) {
@@ -283,23 +396,104 @@
       date.getMonth() + 1 === Number(text.slice(5, 7)) &&
       date.getDate() === Number(text.slice(8, 10));
   }
-  function assertData(value) {
+  function assertLegacyData(value) {
     if (!value || value.version !== 1 || !Array.isArray(value.entries) || value.entries.length > 10000 ||
         !Number.isSafeInteger(value.monthlyBudgetCents) || value.monthlyBudgetCents < 0 ||
-        value.monthlyBudgetCents > 100000000000 ||
+        value.monthlyBudgetCents > MAX_CENTS ||
         typeof value.updatedAt !== "string") throw new Error("Archivio non compatibile.");
     const ids = new Set();
     for (const entry of value.entries) {
       if (!entry || typeof entry.id !== "string" || entry.id.length > 100 ||
           !validDate(entry.date) || !["in", "out"].includes(entry.kind) ||
           !Number.isSafeInteger(entry.amountCents) || entry.amountCents <= 0 ||
-          entry.amountCents > 100000000000 ||
+          entry.amountCents > MAX_CENTS ||
           typeof entry.category !== "string" || entry.category.length > 40 ||
           typeof entry.note !== "string" || entry.note.length > 160 || ids.has(entry.id))
         throw new Error("L'archivio contiene movimenti non validi.");
       ids.add(entry.id);
     }
     return value;
+  }
+  function migrateLegacy(value) {
+    assertLegacyData(value);
+    const next = EMPTY_DATA();
+    if (value.entries.length) next.accounts.unshift({ id: "account-legacy", name: "Movimenti precedenti",
+      type: "other", openingBalanceCents: 0 });
+    next.monthlyBudgetCents = value.monthlyBudgetCents;
+    next.updatedAt = value.updatedAt;
+    next.entries = value.entries.map(entry => {
+      let category = next.categories.find(item => item.kind === entry.kind &&
+        item.name.toLocaleLowerCase("it") === entry.category.toLocaleLowerCase("it"));
+      if (!category) {
+        category = { id: newId(), name: entry.category || "Altro", kind: entry.kind, monthlyLimitCents: 0 };
+        next.categories.push(category);
+      }
+      return { id: entry.id, date: entry.date, kind: entry.kind, amountCents: entry.amountCents,
+        accountId: "account-legacy", categoryId: category.id, note: entry.note };
+    });
+    return assertCurrentData(next);
+  }
+  function assertCurrentData(value) {
+    if (!value || value.version !== 2 || !Array.isArray(value.accounts) ||
+        value.accounts.length < 1 || value.accounts.length > 50 ||
+        !Array.isArray(value.categories) || value.categories.length > 10000 ||
+        !Array.isArray(value.entries) || value.entries.length > 10000 ||
+        !Array.isArray(value.recurring) || value.recurring.length > 150 ||
+        !Number.isSafeInteger(value.monthlyBudgetCents) || value.monthlyBudgetCents < 0 ||
+        value.monthlyBudgetCents > MAX_CENTS || typeof value.updatedAt !== "string" ||
+        value.updatedAt.length > 50) throw new Error("Archivio non compatibile.");
+    const accountIds = new Set();
+    for (const account of value.accounts) {
+      if (!account || typeof account.id !== "string" || !account.id || account.id.length > 100 ||
+          accountIds.has(account.id) || typeof account.name !== "string" || !account.name.trim() ||
+          account.name.length > 40 || !Object.prototype.hasOwnProperty.call(ACCOUNT_TYPES, account.type) ||
+          !Number.isSafeInteger(account.openingBalanceCents) ||
+          Math.abs(account.openingBalanceCents) > MAX_CENTS) throw new Error("Conto non valido.");
+      accountIds.add(account.id);
+    }
+    const categoryIds = new Set();
+    const categoriesById = new Map();
+    for (const category of value.categories) {
+      if (!category || typeof category.id !== "string" || !category.id || category.id.length > 100 ||
+          categoryIds.has(category.id) || typeof category.name !== "string" || !category.name.trim() ||
+          category.name.length > 40 || !["in", "out"].includes(category.kind) ||
+          !Number.isSafeInteger(category.monthlyLimitCents) || category.monthlyLimitCents < 0 ||
+          category.monthlyLimitCents > MAX_CENTS) throw new Error("Categoria non valida.");
+      categoryIds.add(category.id); categoriesById.set(category.id, category);
+    }
+    const recurringIds = new Set();
+    for (const recurring of value.recurring) {
+      if (!recurring || typeof recurring.id !== "string" || !recurring.id || recurring.id.length > 100 ||
+          recurringIds.has(recurring.id) || typeof recurring.name !== "string" || !recurring.name.trim() ||
+          recurring.name.length > 60 || !Number.isSafeInteger(recurring.amountCents) ||
+          recurring.amountCents <= 0 || recurring.amountCents > MAX_CENTS ||
+          !validDate(recurring.nextDue) || !Number.isInteger(recurring.day) ||
+          recurring.day < 1 || recurring.day > 31 || !accountIds.has(recurring.accountId) ||
+          !categoriesById.has(recurring.categoryId) || categoriesById.get(recurring.categoryId).kind !== "out")
+        throw new Error("Spesa mensile non valida.");
+      recurringIds.add(recurring.id);
+    }
+    const entryIds = new Set();
+    for (const entry of value.entries) {
+      if (!entry || typeof entry.id !== "string" || !entry.id || entry.id.length > 100 ||
+          entryIds.has(entry.id) || !validDate(entry.date) ||
+          !["in", "out", "transfer"].includes(entry.kind) ||
+          !Number.isSafeInteger(entry.amountCents) || entry.amountCents <= 0 ||
+          entry.amountCents > MAX_CENTS || typeof entry.note !== "string" || entry.note.length > 160)
+        throw new Error("Movimento non valido.");
+      if (entry.kind === "transfer") {
+        if (!accountIds.has(entry.fromAccountId) || !accountIds.has(entry.toAccountId) ||
+            entry.fromAccountId === entry.toAccountId) throw new Error("Trasferimento non valido.");
+      } else if (!accountIds.has(entry.accountId) || !categoriesById.has(entry.categoryId) ||
+          categoriesById.get(entry.categoryId).kind !== entry.kind) throw new Error("Movimento non valido.");
+      if (entry.recurringId !== undefined && (typeof entry.recurringId !== "string" || entry.recurringId.length > 100))
+        throw new Error("Movimento non valido.");
+      entryIds.add(entry.id);
+    }
+    return value;
+  }
+  function assertData(value) {
+    return value && value.version === 1 ? migrateLegacy(value) : assertCurrentData(value);
   }
   function assertEnvelope(value) {
     if (!value || value.format !== FORMAT || value.version !== 1 || !value.kdf || !value.cipher ||
@@ -343,7 +537,7 @@
     return raw ? JSON.parse(raw) : null;
   }
   function showGate() {
-    data = null; sessionKey = null; sessionSalt = null;
+    data = null; sessionKey = null; sessionSalt = null; pendingRecurringId = null; lastStoredEnvelope = null;
     $("app").hidden = true; $("gate").hidden = false;
     const exists = !!localStorage.getItem(STORAGE_KEY);
     $("gateTitle").textContent = exists ? "Apri il tuo archivio" : "Crea il tuo archivio";
@@ -354,20 +548,30 @@
   function showApp() {
     $("gate").hidden = true; $("app").hidden = false;
     $("newPassword").value = ""; $("confirmPassword").value = ""; $("unlockPassword").value = "";
-    $("entryDate").value = localDate();
+    $("entryDate").max = localDate();
+    $("viewMonth").value = localDate().slice(0, 7);
+    resetEntryForm(); resetAccountForm(); resetCategoryForm(); resetRecurringForm();
     lastActivity = Date.now();
     render();
   }
   async function commit(change) {
-    const next = JSON.parse(JSON.stringify(data));
-    change(next);
-    next.updatedAt = new Date().toISOString();
-    assertData(next);
-    const envelope = await seal(next, sessionKey, sessionSalt);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
-    data = next;
-    render();
-    toast("Salvato sul dispositivo. Esporta il file per aggiornare l'altro.");
+    if (committing) throw new Error("Salvataggio in corso. Riprova tra un momento.");
+    committing = true;
+    try {
+      if (localStorage.getItem(STORAGE_KEY) !== lastStoredEnvelope)
+        throw new Error("Archivio modificato in un'altra finestra. Bloccalo e riaprilo prima di continuare.");
+      const next = JSON.parse(JSON.stringify(data));
+      change(next);
+      next.updatedAt = new Date().toISOString();
+      assertCurrentData(next);
+      const envelope = await seal(next, sessionKey, sessionSalt);
+      const serialized = JSON.stringify(envelope);
+      localStorage.setItem(STORAGE_KEY, serialized);
+      lastStoredEnvelope = serialized;
+      data = next;
+      render();
+      toast("Salvato sul dispositivo. Esporta il file per aggiornare l'altro.");
+    } finally { committing = false; }
   }
   function toast(message) {
     $("toast").textContent = message;
@@ -381,48 +585,175 @@
       : (error && error.message ? error.message : "Operazione non riuscita.");
   }
 
-  // DASHBOARD: qui si possono aggiungere in seguito categorie, conti e obiettivi personali.
+  // DASHBOARD: i saldi includono il saldo di partenza e i movimenti effettivi fino a oggi.
+  function el(tag, className, value) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (value !== undefined) node.textContent = value;
+    return node;
+  }
+  function actionButton(label, action, id, className) {
+    const button = el("button", "btn" + (className ? " " + className : ""), label);
+    button.type = "button"; button.dataset.action = action; button.dataset.id = id;
+    return button;
+  }
+  function accountById(id) { return data.accounts.find(account => account.id === id); }
+  function categoryById(id) { return data.categories.find(category => category.id === id); }
+  function dateLabel(date) { return new Intl.DateTimeFormat("it-IT").format(new Date(date + "T12:00:00")); }
+  function accountBalanceCents(id) {
+    const account = accountById(id);
+    let balance = account.openingBalanceCents;
+    const today = localDate();
+    for (const entry of data.entries) {
+      if (entry.date > today) continue;
+      if (entry.kind === "transfer") {
+        if (entry.fromAccountId === id) balance -= entry.amountCents;
+        if (entry.toAccountId === id) balance += entry.amountCents;
+      } else if (entry.accountId === id) balance += entry.kind === "in" ? entry.amountCents : -entry.amountCents;
+    }
+    return balance;
+  }
+  function fillSelect(id, items, label) {
+    const select = $(id);
+    const previous = select.value;
+    select.replaceChildren();
+    for (const item of items) {
+      const option = el("option", "", label(item)); option.value = item.id; select.append(option);
+    }
+    if (items.some(item => item.id === previous)) select.value = previous;
+  }
+  function syncEntryKind() {
+    const transfer = $("entryKind").value === "transfer";
+    $("entryAccountField").hidden = transfer;
+    $("entryCategoryField").hidden = transfer;
+    $("transferFromField").hidden = !transfer;
+    $("transferToField").hidden = !transfer;
+    $("entryAccount").required = !transfer;
+    $("entryCategory").required = !transfer;
+    $("transferFrom").required = transfer;
+    $("transferTo").required = transfer;
+    if (!transfer) fillSelect("entryCategory", data.categories.filter(item => item.kind === $("entryKind").value), item => item.name);
+    if (transfer && $("transferFrom").value === $("transferTo").value && data.accounts.length > 1)
+      $("transferTo").value = data.accounts.find(item => item.id !== $("transferFrom").value).id;
+  }
+  function syncCategoryEditor() {
+    const expense = $("categoryKind").value === "out";
+    $("categoryLimitField").hidden = !expense;
+    $("categoryLimit").required = expense;
+  }
+  function refreshSelectors() {
+    const accountLabel = item => item.name + " (" + ACCOUNT_TYPES[item.type] + ")";
+    for (const id of ["entryAccount", "transferFrom", "transferTo", "recurringAccount"])
+      fillSelect(id, data.accounts, accountLabel);
+    fillSelect("recurringCategory", data.categories.filter(item => item.kind === "out"), item => item.name);
+    syncEntryKind();
+  }
+  function renderAccounts() {
+    const list = $("accountList"); list.replaceChildren();
+    for (const account of data.accounts) {
+      const card = el("div", "account-card");
+      card.append(el("strong", "", account.name), el("small", "", ACCOUNT_TYPES[account.type]),
+        el("b", "", euro.format(accountBalanceCents(account.id) / 100)));
+      const actions = el("div", "row");
+      actions.append(actionButton("Modifica", "edit", account.id), actionButton("Elimina", "delete", account.id, "danger"));
+      card.append(actions); list.append(card);
+    }
+  }
+  function renderBudgets(monthly) {
+    const list = $("budgetList"); list.replaceChildren();
+    for (const category of data.categories.filter(item => item.kind === "out")) {
+      const spent = monthly.filter(entry => entry.kind === "out" && entry.categoryId === category.id)
+        .reduce((sum, entry) => sum + entry.amountCents, 0);
+      const limit = category.monthlyLimitCents;
+      const card = el("div", "budget-card");
+      card.append(el("strong", "", category.name));
+      const line = el("div", "budget-line");
+      line.append(el("span", "", "Spesi: " + euro.format(spent / 100)),
+        el("strong", limit && spent > limit ? "due" : "", limit ?
+          (spent > limit ? "Superato di " + euro.format((spent - limit) / 100) :
+            "Restano " + euro.format((limit - spent) / 100)) : "Nessun limite"));
+      card.append(line);
+      if (limit) {
+        const bar = el("div", "bar");
+        const fill = el("div", spent > limit ? "over" : "");
+        fill.style.width = Math.min(100, Math.round(spent / limit * 100)) + "%";
+        bar.append(fill); card.append(bar);
+      }
+      card.append(actionButton("Modifica limite", "edit", category.id)); list.append(card);
+    }
+    const categories = $("categoryList"); categories.replaceChildren();
+    for (const category of data.categories) {
+      const item = el("li", "item-row"); const main = el("div", "item-main");
+      main.append(el("strong", "", category.name), el("small", "", category.kind === "out" ?
+        "Spesa · " + (category.monthlyLimitCents ? euro.format(category.monthlyLimitCents / 100) + " al mese" : "nessun limite") : "Entrata"));
+      const actions = el("div", "item-actions");
+      actions.append(actionButton("Modifica", "edit", category.id), actionButton("Elimina", "delete", category.id, "danger"));
+      item.append(main, actions); categories.append(item);
+    }
+  }
+  function renderRecurring() {
+    const list = $("recurringList"); list.replaceChildren();
+    const sorted = [...data.recurring].sort((a, b) => a.nextDue.localeCompare(b.nextDue));
+    for (const recurring of sorted) {
+      const item = el("li", "item-row"); const main = el("div", "item-main");
+      main.append(el("strong", "", recurring.name), el("small", recurring.nextDue < localDate() ? "due" : "",
+        "Prossima: " + dateLabel(recurring.nextDue) + " · " + euro.format(recurring.amountCents / 100)));
+      main.append(el("small", "", accountById(recurring.accountId).name + " · " + categoryById(recurring.categoryId).name));
+      const actions = el("div", "item-actions");
+      actions.append(actionButton("Prepara pagamento", "prepare", recurring.id),
+        actionButton("Modifica", "edit", recurring.id), actionButton("Elimina", "delete", recurring.id, "danger"));
+      item.append(main, actions); list.append(item);
+    }
+    $("recurringEmpty").hidden = sorted.length > 0;
+  }
+  function renderEntries(monthly) {
+    const list = $("entryList"); list.replaceChildren();
+    const sorted = [...monthly].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    $("entryCount").textContent = sorted.length + " movimenti";
+    for (const entry of sorted) {
+      const item = el("li", "entry"); const main = el("div", "entry-main");
+      const transfer = entry.kind === "transfer";
+      const title = transfer ? "Trasferimento" : categoryById(entry.categoryId).name;
+      const detail = transfer ? accountById(entry.fromAccountId).name + " → " + accountById(entry.toAccountId).name :
+        accountById(entry.accountId).name;
+      main.append(el("strong", "", title), el("small", "", dateLabel(entry.date) + " · " + detail +
+        (entry.note ? " · " + entry.note : "")));
+      const amount = el("span", "entry-amount " + entry.kind,
+        (transfer ? "↔ " : entry.kind === "in" ? "+ " : "− ") + euro.format(entry.amountCents / 100));
+      const edit = el("button", "icon-btn", "Modifica"); edit.type = "button";
+      edit.dataset.editEntryId = entry.id;
+      const remove = el("button", "icon-btn", "×"); remove.type = "button";
+      remove.title = "Elimina movimento"; remove.setAttribute("aria-label", "Elimina movimento");
+      remove.dataset.entryId = entry.id;
+      const actions = el("div", "item-actions"); actions.append(edit, remove);
+      item.append(main, amount, actions); list.append(item);
+    }
+    $("emptyList").hidden = sorted.length > 0;
+  }
   function render() {
-    const month = localDate().slice(0, 7);
+    const month = /^\d{4}-\d{2}$/.test($("viewMonth").value) ? $("viewMonth").value : localDate().slice(0, 7);
     const monthly = data.entries.filter(entry => entry.date.slice(0, 7) === month);
     const income = monthly.filter(entry => entry.kind === "in").reduce((sum, entry) => sum + entry.amountCents, 0);
     const expenses = monthly.filter(entry => entry.kind === "out").reduce((sum, entry) => sum + entry.amountCents, 0);
-    const balance = data.entries.reduce((sum, entry) =>
-      sum + (entry.kind === "in" ? entry.amountCents : -entry.amountCents), 0);
+    const balance = data.accounts.reduce((sum, account) => sum + accountBalanceCents(account.id), 0);
     const budget = data.monthlyBudgetCents;
-    $("monthLabel").textContent = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" }).format(new Date());
     $("balance").textContent = euro.format(balance / 100);
     $("income").textContent = euro.format(income / 100);
     $("expenses").textContent = euro.format(expenses / 100);
     $("savings").textContent = euro.format((income - expenses) / 100);
     $("budgetAmount").value = (budget / 100).toFixed(2);
     $("budgetText").textContent = budget ? euro.format(expenses / 100) + " di " + euro.format(budget / 100) + " spesi" :
-      "Nessun budget impostato";
-    $("budgetRemaining").textContent = budget ? euro.format((budget - expenses) / 100) + " rimanenti" : "";
+      "Nessun limite complessivo impostato";
+    $("budgetRemaining").textContent = budget ? (expenses > budget ?
+      "Superato di " + euro.format((expenses - budget) / 100) :
+      "Restano " + euro.format((budget - expenses) / 100)) : "";
+    $("budgetRemaining").classList.toggle("due", budget > 0 && expenses > budget);
     const used = budget ? Math.min(100, Math.round(expenses / budget * 100)) : 0;
     $("budgetFill").style.width = used + "%";
     $("budgetFill").classList.toggle("over", budget > 0 && expenses > budget);
     $("budgetProgress").setAttribute("aria-valuenow", String(used));
-    $("entryCount").textContent = data.entries.length + " movimenti";
-    const list = $("entryList");
-    list.replaceChildren();
-    const sorted = [...data.entries].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-    for (const entry of sorted) {
-      const item = document.createElement("li"); item.className = "entry";
-      const main = document.createElement("div"); main.className = "entry-main";
-      const title = document.createElement("strong"); title.textContent = entry.category;
-      const sub = document.createElement("small");
-      const date = new Date(entry.date + "T12:00:00");
-      sub.textContent = new Intl.DateTimeFormat("it-IT").format(date) + (entry.note ? " · " + entry.note : "");
-      main.append(title, sub);
-      const amount = document.createElement("span"); amount.className = "entry-amount " + entry.kind;
-      amount.textContent = (entry.kind === "in" ? "+ " : "− ") + euro.format(entry.amountCents / 100);
-      const remove = document.createElement("button"); remove.type = "button"; remove.className = "icon-btn";
-      remove.textContent = "×"; remove.title = "Elimina movimento"; remove.setAttribute("aria-label", "Elimina movimento");
-      remove.dataset.entryId = entry.id;
-      item.append(main, amount, remove); list.append(item);
-    }
-    $("emptyList").hidden = sorted.length > 0;
+    refreshSelectors();
+    renderAccounts(); renderBudgets(monthly); renderRecurring(); renderEntries(monthly);
   }
 
   function requestPassword(title, hint) {
@@ -489,7 +820,9 @@
       const salt = randomBytes(16);
       const key = await deriveKey(password, salt);
       const next = EMPTY_DATA();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(await seal(next, key, salt)));
+      const serialized = JSON.stringify(await seal(next, key, salt));
+      localStorage.setItem(STORAGE_KEY, serialized);
+      lastStoredEnvelope = serialized;
       data = next; sessionKey = key; sessionSalt = salt; showApp();
       toast("Archivio creato. Esporta una prima copia cifrata.");
     } catch (error) { $("gateError").textContent = errorMessage(error); }
@@ -497,21 +830,241 @@
   $("unlockForm").addEventListener("submit", async event => {
     event.preventDefault(); $("gateError").textContent = "";
     try {
-      const opened = await openEnvelope(storedEnvelope(), $("unlockPassword").value);
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const opened = await openEnvelope(JSON.parse(raw), $("unlockPassword").value);
+      lastStoredEnvelope = raw;
       data = opened.value; sessionKey = opened.key; sessionSalt = opened.salt; showApp();
     } catch (error) { $("gateError").textContent = "Password errata o archivio danneggiato."; }
   });
+  function resetAccountForm() {
+    $("accountForm").reset(); $("accountEditing").value = ""; $("accountOpening").value = "0";
+    $("accountFormTitle").textContent = "Aggiungi un conto o una carta";
+    $("accountSave").textContent = "Aggiungi"; $("accountCancel").hidden = true;
+  }
+  function resetCategoryForm() {
+    $("categoryForm").reset(); $("categoryEditing").value = ""; $("categoryKind").disabled = false;
+    $("categoryKind").value = "out"; $("categoryLimit").value = "0";
+    $("categoryFormTitle").textContent = "Aggiungi una categoria";
+    $("categorySave").textContent = "Aggiungi"; $("categoryCancel").hidden = true;
+    syncCategoryEditor();
+  }
+  function resetRecurringForm() {
+    $("recurringForm").reset(); $("recurringEditing").value = ""; $("recurringDue").value = localDate();
+    $("recurringFormTitle").textContent = "Aggiungi una spesa mensile";
+    $("recurringSave").textContent = "Aggiungi"; $("recurringCancel").hidden = true;
+  }
+  function resetEntryForm() {
+    $("entryForm").reset(); $("entryEditing").value = ""; pendingRecurringId = null;
+    $("entryKind").value = "out"; $("entryDate").value = localDate();
+    $("entrySave").textContent = "Aggiungi movimento"; $("entryCancel").hidden = true;
+    syncEntryKind();
+  }
+  function editCategory(id) {
+    const category = categoryById(id);
+    if (!category) return;
+    $("categoryEditing").value = category.id; $("categoryName").value = category.name;
+    $("categoryKind").value = category.kind; $("categoryKind").disabled = true;
+    $("categoryLimit").value = (category.monthlyLimitCents / 100).toFixed(2);
+    $("categoryFormTitle").textContent = "Modifica categoria";
+    $("categorySave").textContent = "Salva modifiche"; $("categoryCancel").hidden = false;
+    syncCategoryEditor(); $("categoryForm").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  function nextMonthlyDate(date, day) {
+    const year = Number(date.slice(0, 4)); const month = Number(date.slice(5, 7));
+    const next = new Date(year, month, 1, 12);
+    const lastDay = new Date(year, month + 1, 0, 12).getDate();
+    return next.getFullYear() + "-" + String(next.getMonth() + 1).padStart(2, "0") +
+      "-" + String(Math.min(day, lastDay)).padStart(2, "0");
+  }
+  $("accountForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    try {
+      const id = $("accountEditing").value;
+      const name = $("accountName").value.trim();
+      const type = $("accountType").value;
+      const openingBalanceCents = signedCents($("accountOpening").value);
+      if (!name || name.length > 40 || !Object.prototype.hasOwnProperty.call(ACCOUNT_TYPES, type))
+        throw new Error("Controlla i dati del conto.");
+      if (data.accounts.some(item => item.id !== id && item.name.toLocaleLowerCase("it") === name.toLocaleLowerCase("it")))
+        throw new Error("Esiste già un saldo con questo nome.");
+      await commit(next => {
+        if (id) {
+          const account = next.accounts.find(item => item.id === id);
+          if (!account) throw new Error("Conto non trovato.");
+          Object.assign(account, { name, type, openingBalanceCents });
+        } else next.accounts.push({ id: newId(), name, type, openingBalanceCents });
+      });
+      resetAccountForm();
+    } catch (error) { toast(errorMessage(error)); }
+  });
+  $("accountCancel").addEventListener("click", resetAccountForm);
+  $("accountList").addEventListener("click", async event => {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+    const account = accountById(button.dataset.id);
+    if (!account) return;
+    if (button.dataset.action === "edit") {
+      $("accountEditing").value = account.id; $("accountName").value = account.name;
+      $("accountType").value = account.type;
+      $("accountOpening").value = (account.openingBalanceCents / 100).toFixed(2);
+      $("accountFormTitle").textContent = "Modifica saldo";
+      $("accountSave").textContent = "Salva modifiche"; $("accountCancel").hidden = false;
+      $("accountForm").scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (data.accounts.length === 1 || account.openingBalanceCents !== 0 ||
+        data.entries.some(item => item.accountId === account.id || item.fromAccountId === account.id || item.toAccountId === account.id) ||
+        data.recurring.some(item => item.accountId === account.id)) {
+      toast("Per eliminare un saldo, deve essere a zero e non usato da movimenti o spese mensili."); return;
+    }
+    if (!confirm("Eliminare " + account.name + "?")) return;
+    try { await commit(next => { next.accounts = next.accounts.filter(item => item.id !== account.id); });
+      if ($("accountEditing").value === account.id) resetAccountForm();
+    } catch (error) { toast(errorMessage(error)); }
+  });
+  $("categoryForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    try {
+      const id = $("categoryEditing").value;
+      const name = $("categoryName").value.trim();
+      const existing = id ? categoryById(id) : null;
+      const kind = existing ? existing.kind : $("categoryKind").value;
+      const monthlyLimitCents = kind === "out" ? cents($("categoryLimit").value, true) : 0;
+      if (!name || name.length > 40 || !["in", "out"].includes(kind)) throw new Error("Controlla la categoria.");
+      if (data.categories.some(item => item.id !== id && item.kind === kind &&
+          item.name.toLocaleLowerCase("it") === name.toLocaleLowerCase("it")))
+        throw new Error("Esiste già una categoria con questo nome.");
+      await commit(next => {
+        if (id) {
+          const category = next.categories.find(item => item.id === id);
+          if (!category) throw new Error("Categoria non trovata.");
+          Object.assign(category, { name, monthlyLimitCents });
+        } else next.categories.push({ id: newId(), name, kind, monthlyLimitCents });
+      });
+      resetCategoryForm();
+    } catch (error) { toast(errorMessage(error)); }
+  });
+  $("categoryCancel").addEventListener("click", resetCategoryForm);
+  $("categoryKind").addEventListener("change", syncCategoryEditor);
+  async function handleCategoryAction(event) {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+    const category = categoryById(button.dataset.id);
+    if (!category) return;
+    if (button.dataset.action === "edit") { editCategory(category.id); return; }
+    if (data.categories.filter(item => item.kind === category.kind).length === 1 ||
+        data.entries.some(item => item.categoryId === category.id) ||
+        data.recurring.some(item => item.categoryId === category.id)) {
+      toast("Questa categoria è in uso o è l'ultima del suo tipo."); return;
+    }
+    if (!confirm("Eliminare la categoria " + category.name + "?")) return;
+    try { await commit(next => { next.categories = next.categories.filter(item => item.id !== category.id); });
+      if ($("categoryEditing").value === category.id) resetCategoryForm();
+    } catch (error) { toast(errorMessage(error)); }
+  }
+  $("categoryList").addEventListener("click", handleCategoryAction);
+  $("budgetList").addEventListener("click", handleCategoryAction);
+  $("recurringForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    try {
+      const id = $("recurringEditing").value;
+      const name = $("recurringName").value.trim();
+      const amountCents = cents($("recurringAmount").value, false);
+      const nextDue = $("recurringDue").value;
+      const accountId = $("recurringAccount").value;
+      const categoryId = $("recurringCategory").value;
+      if (!name || name.length > 60 || !validDate(nextDue) || !accountById(accountId) ||
+          !categoryById(categoryId) || categoryById(categoryId).kind !== "out")
+        throw new Error("Controlla i dati della spesa mensile.");
+      await commit(next => {
+        if (id) {
+          const recurring = next.recurring.find(item => item.id === id);
+          if (!recurring) throw new Error("Spesa mensile non trovata.");
+          const day = recurring.nextDue === nextDue ? recurring.day : Number(nextDue.slice(8));
+          Object.assign(recurring, { name, amountCents, nextDue, day, accountId, categoryId });
+        } else next.recurring.push({ id: newId(), name, amountCents, nextDue,
+          day: Number(nextDue.slice(8)), accountId, categoryId });
+      });
+      resetRecurringForm();
+    } catch (error) { toast(errorMessage(error)); }
+  });
+  $("recurringCancel").addEventListener("click", resetRecurringForm);
+  $("recurringList").addEventListener("click", async event => {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+    const recurring = data.recurring.find(item => item.id === button.dataset.id);
+    if (!recurring) return;
+    if (button.dataset.action === "prepare") {
+      resetEntryForm();
+      pendingRecurringId = recurring.id;
+      $("entryKind").value = "out"; syncEntryKind();
+      $("entryAmount").value = (recurring.amountCents / 100).toFixed(2);
+      $("entryDate").value = localDate(); $("entryAccount").value = recurring.accountId;
+      $("entryCategory").value = recurring.categoryId; $("entryNote").value = recurring.name;
+      $("entrySave").textContent = "Registra pagamento";
+      $("entryForm").scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (button.dataset.action === "edit") {
+      $("recurringEditing").value = recurring.id; $("recurringName").value = recurring.name;
+      $("recurringAmount").value = (recurring.amountCents / 100).toFixed(2);
+      $("recurringDue").value = recurring.nextDue; $("recurringAccount").value = recurring.accountId;
+      $("recurringCategory").value = recurring.categoryId;
+      $("recurringFormTitle").textContent = "Modifica spesa mensile";
+      $("recurringSave").textContent = "Salva modifiche"; $("recurringCancel").hidden = false;
+      $("recurringForm").scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!confirm("Eliminare la spesa mensile " + recurring.name + "? I pagamenti già registrati restano.")) return;
+    try { await commit(next => { next.recurring = next.recurring.filter(item => item.id !== recurring.id); });
+      if (pendingRecurringId === recurring.id) { pendingRecurringId = null; $("entrySave").textContent = "Aggiungi movimento"; }
+      if ($("recurringEditing").value === recurring.id) resetRecurringForm();
+    } catch (error) { toast(errorMessage(error)); }
+  });
+  $("entryKind").addEventListener("change", () => {
+    pendingRecurringId = null;
+    $("entrySave").textContent = $("entryEditing").value ? "Salva modifiche" : "Aggiungi movimento";
+    syncEntryKind();
+  });
+  $("entryCancel").addEventListener("click", resetEntryForm);
   $("entryForm").addEventListener("submit", async event => {
     event.preventDefault();
     try {
       const amountCents = cents($("entryAmount").value, false);
       const date = $("entryDate").value;
-      if (!validDate(date)) throw new Error("Seleziona una data valida.");
-      const category = $("entryCategory").value;
+      if (!validDate(date) || date > localDate()) throw new Error("Seleziona una data valida, non futura.");
       const note = $("entryNote").value.trim();
       const kind = $("entryKind").value;
-      await commit(next => next.entries.push({ id: newId(), date, kind, amountCents, category, note }));
-      $("entryAmount").value = ""; $("entryNote").value = "";
+      const editingId = $("entryEditing").value;
+      const entry = { id: editingId || newId(), date, kind, amountCents, note };
+      if (kind === "transfer") {
+        entry.fromAccountId = $("transferFrom").value;
+        entry.toAccountId = $("transferTo").value;
+        if (data.accounts.length < 2 || entry.fromAccountId === entry.toAccountId)
+          throw new Error("Scegli due saldi diversi per il trasferimento.");
+      } else {
+        entry.accountId = $("entryAccount").value;
+        entry.categoryId = $("entryCategory").value;
+      }
+      const recurringId = !editingId && kind === "out" ? pendingRecurringId : null;
+      if (recurringId) entry.recurringId = recurringId;
+      if (editingId && kind === "out") {
+        const previous = data.entries.find(item => item.id === editingId);
+        if (previous && previous.recurringId) entry.recurringId = previous.recurringId;
+      }
+      $("viewMonth").value = date.slice(0, 7);
+      await commit(next => {
+        if (editingId) {
+          const index = next.entries.findIndex(item => item.id === editingId);
+          if (index < 0) throw new Error("Movimento non trovato.");
+          next.entries[index] = entry;
+        } else next.entries.push(entry);
+        if (recurringId) {
+          const recurring = next.recurring.find(item => item.id === recurringId);
+          if (recurring) recurring.nextDue = nextMonthlyDate(recurring.nextDue, recurring.day);
+        }
+      });
+      resetEntryForm();
     } catch (error) { toast(errorMessage(error)); }
   });
   $("budgetForm").addEventListener("submit", async event => {
@@ -521,8 +1074,28 @@
     } catch (error) { toast(errorMessage(error)); }
   });
   $("entryList").addEventListener("click", async event => {
+    const edit = event.target.closest("button[data-edit-entry-id]");
+    if (edit) {
+      const entry = data.entries.find(item => item.id === edit.dataset.editEntryId);
+      if (!entry) return;
+      resetEntryForm();
+      $("entryEditing").value = entry.id; $("entryKind").value = entry.kind; syncEntryKind();
+      $("entryAmount").value = (entry.amountCents / 100).toFixed(2);
+      $("entryDate").value = entry.date; $("entryNote").value = entry.note;
+      if (entry.kind === "transfer") {
+        $("transferFrom").value = entry.fromAccountId; $("transferTo").value = entry.toAccountId;
+      } else {
+        $("entryAccount").value = entry.accountId; $("entryCategory").value = entry.categoryId;
+      }
+      $("entrySave").textContent = "Salva modifiche"; $("entryCancel").hidden = false;
+      $("entryForm").scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     const button = event.target.closest("button[data-entry-id]");
-    if (!button || !confirm("Eliminare questo movimento?")) return;
+    if (!button) return;
+    const entry = data.entries.find(item => item.id === button.dataset.entryId);
+    if (!entry || !confirm("Eliminare questo movimento?" +
+        (entry.recurringId ? " La prossima scadenza mensile non cambierà." : ""))) return;
     try { await commit(next => { next.entries = next.entries.filter(entry => entry.id !== button.dataset.entryId); }); }
     catch (error) { toast(errorMessage(error)); }
   });
@@ -530,16 +1103,25 @@
     const password = await requestPassword("Esporta dati cifrati", "Conferma la password principale prima di scaricare il file.");
     if (password === null) return;
     try {
-      const envelope = storedEnvelope();
-      await openEnvelope(envelope, password);
+      if (committing || localStorage.getItem(STORAGE_KEY) !== lastStoredEnvelope)
+        throw new Error("Archivio modificato in un'altra finestra. Bloccalo e riaprilo prima di esportare.");
+      const opened = await openEnvelope(storedEnvelope(), password);
+      if (opened.value.updatedAt !== data.updatedAt) throw new Error("L'archivio è cambiato in un'altra finestra. Bloccalo e riaprilo.");
+      const envelope = await seal(data, opened.key, opened.salt);
+      const serialized = JSON.stringify(envelope);
+      localStorage.setItem(STORAGE_KEY, serialized);
+      lastStoredEnvelope = serialized;
       const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a"); link.href = url;
-      link.download = "finanze_data_" + localDate().replaceAll("-", "") + ".json";
+      const now = new Date();
+      link.download = "finanze_data_" + localDate().replaceAll("-", "") + "_" +
+        String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0") +
+        String(now.getSeconds()).padStart(2, "0") + ".json";
       document.body.append(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
       toast("File cifrato scaricato. Salvalo nel cloud scelto.");
-    } catch (error) { toast("Password errata o esportazione non riuscita."); }
+    } catch (error) { toast(errorMessage(error)); }
   });
   $("filePicker").addEventListener("change", async event => {
     const file = event.target.files && event.target.files[0];
@@ -550,10 +1132,15 @@
       const password = await requestPassword("Importa dati cifrati", "Inserisci la password usata quando hai esportato questo file.");
       if (password === null) return;
       const opened = await openEnvelope(envelope, password);
-      if (localStorage.getItem(STORAGE_KEY) &&
-          !confirm("L'importazione sostituira l'archivio locale. Se ci sono modifiche non esportate, perderai quelle modifiche. Continuare?"))
-        return;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
+      if (localStorage.getItem(STORAGE_KEY)) {
+        const older = data && new Date(opened.value.updatedAt).getTime() < new Date(data.updatedAt).getTime();
+        const warning = older ? "Questo file è più vecchio dell'archivio aperto. Importandolo perderai le modifiche più recenti. Continuare?" :
+          "L'importazione sostituirà l'archivio locale. Se hai modifiche non esportate, le perderai. Continuare?";
+        if (!confirm(warning)) return;
+      }
+      const serialized = JSON.stringify(await seal(opened.value, opened.key, opened.salt));
+      localStorage.setItem(STORAGE_KEY, serialized);
+      lastStoredEnvelope = serialized;
       data = opened.value; sessionKey = opened.key; sessionSalt = opened.salt; showApp();
       toast("Archivio importato. Ora puoi usarlo su questo dispositivo.");
     } catch (error) {
@@ -570,13 +1157,10 @@
   $("passwordCancel").addEventListener("click", () => finishPassword(null));
   $("passwordDialog").addEventListener("cancel", event => { event.preventDefault(); finishPassword(null); });
   $("theme").addEventListener("change", event => applyTheme(event.target.value));
+  $("viewMonth").addEventListener("change", () => { if (data) render(); });
   matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
     if ($("theme").value === "system") applyTheme("system");
   });
-  for (const category of DEFAULT_CATEGORIES) {
-    const option = document.createElement("option"); option.value = category; option.textContent = category;
-    $("entryCategory").append(option);
-  }
   try {
     if (!window.isSecureContext || !crypto.subtle) throw new Error("La cifratura richiede HTTPS o un file locale aperto in un browser compatibile.");
     localStorage.setItem("finanze-private-check", "1");
